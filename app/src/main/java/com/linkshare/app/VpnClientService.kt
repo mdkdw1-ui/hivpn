@@ -1,4 +1,4 @@
-package com.myinternet.share
+package com.linkshare.app
 
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -50,7 +50,7 @@ class VpnClientService : VpnService() {
             Class.forName("hev.htproxy.TProxyService")
             AppLog.i("vpn", "native 로드 OK")
             val fd = Builder()
-                .setSession("MyInternet")
+                .setSession("LinkShare")
                 .setMtu(1500)
                 .addAddress("198.18.0.1", 32)
                 .addRoute("0.0.0.0", 0)

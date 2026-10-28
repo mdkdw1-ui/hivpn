@@ -4,12 +4,12 @@ plugins {
 }
 
 android {
-    namespace = "com.myinternet.share"
+    namespace = "com.linkshare.app"
     compileSdk = 34
     ndkVersion = "26.3.11579264"
 
     defaultConfig {
-        applicationId = "com.myinternet.share"
+        applicationId = "com.linkshare.app"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

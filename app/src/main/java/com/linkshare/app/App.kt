@@ -1,4 +1,4 @@
-package com.myinternet.share
+package com.linkshare.app
 
 import android.app.Application
 import android.os.Build

@@ -1,4 +1,4 @@
-package com.myinternet.share
+package com.linkshare.app
 
 import android.graphics.Bitmap
 import android.graphics.Color

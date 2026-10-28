@@ -1,4 +1,4 @@
-package com.myinternet.share
+package com.linkshare.app
 
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream

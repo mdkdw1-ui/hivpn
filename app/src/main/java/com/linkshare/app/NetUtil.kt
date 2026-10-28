@@ -1,4 +1,4 @@
-package com.myinternet.share
+package com.linkshare.app
 
 import android.content.Context
 import android.net.ConnectivityManager

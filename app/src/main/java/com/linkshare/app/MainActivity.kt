@@ -1,4 +1,4 @@
-package com.myinternet.share
+package com.linkshare.app
 
 import android.Manifest
 import android.app.Activity
@@ -62,7 +62,7 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.parseColor("#F5F7FA"))
         }
         root.addView(TextView(this).apply {
-            text = "MyInternet"; textSize = 28f; setTextColor(Color.parseColor("#0D47A1"))
+            text = "LinkShare"; textSize = 28f; setTextColor(Color.parseColor("#0D47A1"))
             setTypeface(null, Typeface.BOLD); gravity = Gravity.CENTER
         })
 
