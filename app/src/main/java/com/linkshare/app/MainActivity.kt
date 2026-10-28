@@ -318,7 +318,7 @@ class MainActivity : Activity() {
 
     private fun startVpn(host: String) {
         try {
-            val allowed = prefs.getStringSet("allowed_apps", emptySet())?.toArrayList() ?: arrayListOf()
+            val allowed = ArrayList(prefs.getStringSet("allowed_apps", emptySet()) ?: emptySet<String>())
             val intent = Intent(this, VpnClientService::class.java)
                 .putExtra("host", host)
                 .putStringArrayListExtra("allowed_apps", allowed)
