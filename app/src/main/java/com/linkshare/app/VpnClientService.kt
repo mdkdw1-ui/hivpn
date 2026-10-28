@@ -18,61 +18,61 @@ class VpnClientService : VpnService() {
     private var started = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        AppLog.i("vpn", "onStartCommand action=${intent?.action} host=${intent?.getStringExtra("host")}")
+        AppLog.i("vpn", "onStartCommand action=${intent?.action}")
         if (intent?.action == "stop") {
-            stopTunnel()
-            stopSelf()
-            return START_NOT_STICKY
+            stopTunnel(); stopSelf(); return START_NOT_STICKY
         }
         val host = intent?.getStringExtra("host") ?: return START_NOT_STICKY
+        val allowedApps = intent.getStringArrayListExtra("allowed_apps") ?: arrayListOf()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val network = intent.getParcelableExtra<Network>("network")
             if (network != null) {
                 try {
-                    val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
-                    cm.bindProcessToNetwork(network)
-                    AppLog.i("vpn", "VPN 프로세스가 Wi-Fi 네트워크에 바인딩됨: $network")
-                } catch (t: Throwable) {
-                    AppLog.e("vpn", "VPN 프로세스 네트워크 바인딩 실패", t)
-                }
+                    (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager).bindProcessToNetwork(network)
+                    AppLog.i("vpn", "Wi-Fi 네트워크 바인딩: $network")
+                } catch (t: Throwable) { AppLog.e("vpn", "네트워크 바인딩 실패", t) }
             }
         }
-
-        startTunnel(host)
+        startTunnel(host, allowedApps)
         return START_NOT_STICKY
     }
 
-    private fun startTunnel(host: String) {
+    private fun startTunnel(host: String, allowedApps: List<String>) {
         stopTunnel()
         try {
-            AppLog.i("vpn", "native 로드 시도")
             Class.forName("hev.htproxy.TProxyService")
-            AppLog.i("vpn", "native 로드 OK")
-            val fd = Builder()
+            val builder = Builder()
                 .setSession("LinkShare")
                 .setMtu(1500)
                 .addAddress("198.18.0.1", 32)
                 .addRoute("0.0.0.0", 0)
                 .addDnsServer("198.18.0.2")
-                .addDisallowedApplication(packageName)
-                .establish()
+
+            if (allowedApps.isEmpty()) {
+                builder.addDisallowedApplication(packageName)
+            } else {
+                for (pkg in allowedApps) {
+                    try { builder.addAllowedApplication(pkg) }
+                    catch (t: Throwable) { AppLog.e("vpn", "addAllowedApplication 실패 $pkg", t) }
+                }
+            }
+            val fd = builder.establish()
             if (fd == null) {
-                AppLog.e("vpn", "establish() 가 null: VPN 권한이 없거나 다른 VPN이 우선")
+                AppLog.e("vpn", "establish() null")
+                sendStat("VPN 권한 없음 / 다른 VPN 우선")
                 return
             }
             pfd = fd
-            AppLog.i("vpn", "TUN 생성 fd=${fd.fd}")
+            AppLog.i("vpn", "TUN fd=${fd.fd}, allowed=${allowedApps.size}")
 
             try {
                 val wm = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
                 @Suppress("DEPRECATION")
                 val mode = if (Build.VERSION.SDK_INT >= 29) WifiManager.WIFI_MODE_FULL_LOW_LATENCY
                            else WifiManager.WIFI_MODE_FULL_HIGH_PERF
-                wifiLock = wm.createWifiLock(mode, "myinternet").apply { setReferenceCounted(false); acquire() }
-            } catch (t: Throwable) {
-                AppLog.e("vpn", "Wi-Fi 락 실패", t)
-            }
+                wifiLock = wm.createWifiLock(mode, "linkshare").apply { setReferenceCounted(false); acquire() }
+            } catch (_: Throwable) {}
 
             val logFile = File(filesDir, "hev.log")
             logFile.delete()
@@ -98,13 +98,14 @@ class VpnClientService : VpnService() {
                   log-level: warn
                 """.trimIndent() + "\n"
             )
-            AppLog.i("vpn", "hev 설정:\n" + cfg.readText())
             val r = TProxyService.TProxyStartService(cfg.absolutePath, fd.fd)
             started = true
-            AppLog.i("vpn", "TProxyStartService 반환: $r")
+            AppLog.i("vpn", "TProxyStartService=$r")
+            sendStat("연결됨 → $host (화이트리스트 ${allowedApps.size}개)")
             startStats()
         } catch (t: Throwable) {
             AppLog.e("vpn", "터널 시작 실패", t)
+            sendStat("실패: ${t.message}")
             stopTunnel()
         }
     }
@@ -113,40 +114,32 @@ class VpnClientService : VpnService() {
         statsThread = thread(isDaemon = true) {
             try {
                 while (!Thread.currentThread().isInterrupted) {
-                    Thread.sleep(5000)
+                    Thread.sleep(2000)
                     val s = TProxyService.TProxyGetStats()
-                    if (s.size >= 4) {
-                        AppLog.i("hev", "통계 tx=${s[0]}pkt/${s[1]}B rx=${s[2]}pkt/${s[3]}B")
-                    }
+                    if (s.size >= 4) sendStat("tx ${s[1]}B / rx ${s[3]}B")
                 }
             } catch (_: InterruptedException) {
-            } catch (t: Throwable) {
-                AppLog.e("hev", "통계 오류", t)
-            }
+            } catch (t: Throwable) { AppLog.e("hev", "통계 오류", t) }
         }
     }
 
+    private fun sendStat(msg: String) {
+        sendBroadcast(Intent(ACTION_STAT).setPackage(packageName).putExtra("msg", msg))
+    }
+
     private fun stopTunnel() {
-        statsThread?.interrupt()
-        statsThread = null
-        if (started) {
-            started = false
-            try { TProxyService.TProxyStopService() } catch (_: Throwable) {}
-        }
+        statsThread?.interrupt(); statsThread = null
+        if (started) { started = false; try { TProxyService.TProxyStopService() } catch (_: Throwable) {} }
         try { pfd?.close() } catch (_: Exception) {}
         pfd = null
         try { wifiLock?.release() } catch (_: Exception) {}
         wifiLock = null
     }
 
-    override fun onRevoke() {
-        AppLog.i("vpn", "onRevoke")
-        stopTunnel()
-        stopSelf()
-    }
+    override fun onRevoke() { stopTunnel(); stopSelf() }
+    override fun onDestroy() { stopTunnel(); super.onDestroy() }
 
-    override fun onDestroy() {
-        stopTunnel()
-        super.onDestroy()
+    companion object {
+        const val ACTION_STAT = "com.linkshare.app.VPN_STAT"
     }
 }

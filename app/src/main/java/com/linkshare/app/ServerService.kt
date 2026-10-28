@@ -17,45 +17,37 @@ class ServerService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        AppLog.i("srv", "ServerService onStartCommand")
+        AppLog.i("srv", "ServerService 시작 auth=${authUser.isNotEmpty()}")
         try {
             val nm = getSystemService(NotificationManager::class.java)
-            nm.createNotificationChannel(
-                NotificationChannel("srv", "Server", NotificationManager.IMPORTANCE_LOW)
-            )
+            nm.createNotificationChannel(NotificationChannel("srv", "Server", NotificationManager.IMPORTANCE_LOW))
             val n = Notification.Builder(this, "srv")
-                .setContentTitle("MyInternet 서버 실행 중")
-                .setContentText("SOCKS5 포트 $PORT")
+                .setContentTitle("LinkShare 서버 실행 중")
+                .setContentText("SOCKS5 :$PORT ${if (authUser.isNotEmpty()) "(인증)" else ""}")
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build()
-            if (Build.VERSION.SDK_INT >= 29) {
+            if (Build.VERSION.SDK_INT >= 29)
                 startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
-            } else {
-                startForeground(1, n)
-            }
+            else startForeground(1, n)
+
             if (wl == null) {
                 wl = (getSystemService(POWER_SERVICE) as PowerManager)
-                    .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "myinternet:server")
+                    .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "linkshare:server")
                     .apply { setReferenceCounted(false); acquire() }
             }
             if (server == null) {
-                server = Socks5Server(PORT).also { it.start() }
+                server = Socks5Server(PORT, authUser, authPass).also { it.start() }
                 running = true
             }
         } catch (t: Throwable) {
             AppLog.e("srv", "서버 시작 실패", t)
-            running = false
-            server = null
-            stopSelf()
+            running = false; server = null; stopSelf()
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
-        AppLog.i("srv", "ServerService onDestroy")
-        server?.stop()
-        server = null
-        running = false
+        server?.stop(); server = null; running = false
         try { wl?.release() } catch (_: Exception) {}
         wl = null
         super.onDestroy()
@@ -63,8 +55,8 @@ class ServerService : Service() {
 
     companion object {
         const val PORT = 1080
-
-        @Volatile
-        var running = false
+        @Volatile var running = false
+        @Volatile var authUser: String = ""
+        @Volatile var authPass: String = ""
     }
 }
