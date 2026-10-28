@@ -13,8 +13,14 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Init nested submodules
-        run: git submodule update --init --recursive
+      - name: Force init nested submodules
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive --force
+          # 확인: third-part 아래에 파일이 있는지 검증
+          ls -la app/src/main/jni/hev-socks5-tunnel/third-part/yaml/
+          ls -la app/src/main/jni/hev-socks5-tunnel/third-part/lwip/
+          ls -la app/src/main/jni/hev-socks5-tunnel/third-part/hev-task-system/
 
       - uses: actions/setup-java@v4
         with:
