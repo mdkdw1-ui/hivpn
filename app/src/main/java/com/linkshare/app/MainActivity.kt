@@ -191,17 +191,57 @@ class MainActivity : Activity() {
 
     private fun showAppPicker() {
         val pm = packageManager
-        val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            .filter { it.packageName != packageName && pm.getLaunchIntentForPackage(it.packageName) != null }
-            .sortedBy { pm.getApplicationLabel(it).toString() }
-        val labels = apps.map { "${pm.getApplicationLabel(it)} (${it.packageName})" }.toTypedArray()
+        val all = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            .filter { it.packageName != packageName }
+            .map { Triple(pm.getApplicationLabel(it).toString(), it.packageName, it) }
+            .sortedBy { it.first.lowercase() }
+
+        val labelsArr = all.map { "${it.first}\n${it.second}" }.toTypedArray()
         val saved = prefs.getStringSet("allowed_apps", emptySet()) ?: emptySet()
-        val checked = BooleanArray(apps.size) { apps[it].packageName in saved }
+        val checked = BooleanArray(all.size) { all[it].second in saved }
+
+        val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 12, 24, 0) }
+        val searchEt = EditText(this).apply { hint = "앱 이름 검색 (예: rainsee)" }
+        ll.addView(searchEt)
+        val lv = ListView(this)
+        ll.addView(lv, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        var filtered = all.indices.toMutableList()
+        var filteredChecked = checked.copyOf()
+        val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_list_item_multiple_choice, labelsArr) {
+            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
+                val v = super.getView(position, convertView, parent)
+                val realIdx = filtered[position]
+                (v as android.widget.CheckedTextView).isChecked = filteredChecked[realIdx]
+                return v
+            }
+        }
+        lv.adapter = adapter
+        lv.choiceMode = ListView.CHOICE_MODE_MULTIPLE
+        lv.setOnItemClickListener { _, _, pos, _ ->
+            val realIdx = filtered[pos]
+            filteredChecked[realIdx] = !filteredChecked[realIdx]
+            adapter.notifyDataSetChanged()
+        }
+
+        searchEt.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) {
+                val q = s?.toString()?.lowercase() ?: ""
+                filtered = if (q.isEmpty()) all.indices.toMutableList()
+                else all.indices.filter { all[it].first.lowercase().contains(q) || all[it].second.lowercase().contains(q) }.toMutableList()
+                adapter.clear()
+                adapter.addAll(filtered.map { "${all[it].first}\n${all[it].second}" })
+                adapter.notifyDataSetChanged()
+            }
+            override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+            override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
+        })
+
         AlertDialog.Builder(this)
-            .setTitle("VPN 경유할 앱 (미선택 시 전체)")
-            .setMultiChoiceItems(labels, checked) { _, which, isChecked -> checked[which] = isChecked }
+            .setTitle("VPN 경유할 앱 선택 (미선택 시 전체)")
+            .setView(ll)
             .setPositiveButton("저장") { _, _ ->
-                val set = apps.filterIndexed { i, _ -> checked[i] }.map { it.packageName }.toSet()
+                val set = all.indices.filter { filteredChecked[it] }.map { all[it].second }.toSet()
                 prefs.edit().putStringSet("allowed_apps", set).apply()
                 Toast.makeText(this, "${set.size}개 선택됨", Toast.LENGTH_SHORT).show()
             }
